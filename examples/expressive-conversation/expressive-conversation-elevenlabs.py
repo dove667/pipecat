@@ -96,7 +96,6 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
             "deadpan",
             "mischievously",
             "whispers",
-            "laughing",
         ],
         events=[
             "laughs",
