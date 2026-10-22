@@ -8,6 +8,7 @@
 
 from pipecat.expressive.expression import ExpressionCapabilities, ExpressionTerm
 from pipecat.expressive.instructions import expression_instructions, unperformable_tags
+from pipecat.expressive.perception import PerceptionCapabilities, PerceptionTerm
 from pipecat.expressive.policy import ExpressionGuidance, ExpressionPolicy
 
 FIXED = ExpressionCapabilities(
@@ -96,3 +97,39 @@ def test_unperformable_tags_are_those_a_fixed_list_lacks():
 
     assert unperformable_tags(FIXED, policy) == ["<<relieved>>", "[[sighs]]"]
     assert unperformable_tags(FREE_TEXT, policy) == []
+
+
+PERCEPTION = PerceptionCapabilities(
+    signals=[
+        PerceptionTerm("tone", labels=["positive", "neutral", "sad", "frustrated"]),
+        PerceptionTerm("speech_rate", "Words per second."),
+    ]
+)
+
+
+def test_perception_is_taught_with_an_example_and_its_signals():
+    instructions = expression_instructions(None, perception=PERCEPTION)
+
+    assert "such as [heard: tone positive 0.86, neutral 0.10]," in instructions
+    assert "A reading below 0.5 is a guess: don't act on it." in instructions
+    assert instructions.endswith(
+        "- tone: positive, neutral, sad, frustrated.\n- speech_rate: Words per second."
+    )
+
+
+def test_perception_comes_before_the_tags_and_the_guidance_last():
+    policy = ExpressionPolicy(guidance=[ExpressionGuidance.MATCH_STYLE])
+
+    instructions = expression_instructions(FIXED, policy, perception=PERCEPTION)
+
+    reading = instructions.index("[heard:")
+    tags = instructions.index("You can direct how your words are spoken")
+    assert reading < tags < instructions.index(ExpressionGuidance.MATCH_STYLE)
+
+
+def test_guidance_is_kept_for_perception_without_tags():
+    policy = ExpressionPolicy(guidance=["If the user sounds frustrated, apologize once."])
+
+    instructions = expression_instructions(None, policy, perception=PERCEPTION)
+
+    assert instructions.endswith("\n\nIf the user sounds frustrated, apologize once.")
