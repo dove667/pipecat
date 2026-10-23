@@ -1,0 +1,27 @@
+name: VAD audio clock
+
+on:
+  push:
+    branches: [duplex-harness]
+    paths:
+      - src/pipecat/audio/vad/**
+      - tests/test_silero_audio_clock.py
+      - .github/workflows/vad-audio-clock.yml
+
+permissions:
+  contents: read
+
+jobs:
+  audio-clock:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: '0.10.7'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12.12'
+      - run: uv sync --locked --no-dev --python 3.12.12
+      - run: uv run --locked --no-sync python -m unittest discover -s tests -p test_silero_audio_clock.py -v

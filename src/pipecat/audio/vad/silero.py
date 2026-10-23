@@ -11,7 +11,6 @@ which can detect voice activity in audio streams with high accuracy.
 Supports 8kHz and 16kHz sample rates.
 """
 
-import time
 from typing import cast
 
 import numpy as np
@@ -19,7 +18,7 @@ from loguru import logger
 
 from pipecat.audio.vad.vad_analyzer import VADAnalyzer, VADParams
 
-# How often should we reset internal model state
+# Audio duration between recurrent-state resets, independent of processing speed.
 _MODEL_RESET_STATES_TIME = 5.0
 
 try:
@@ -164,7 +163,7 @@ class SileroVADAnalyzer(VADAnalyzer):
 
         self._model = SileroOnnxModel(model_file_path, force_onnx_cpu=True)
 
-        self._last_reset_time = 0
+        self._samples_since_reset = 0
 
         logger.debug("Loaded Silero VAD")
 
@@ -186,7 +185,10 @@ class SileroVADAnalyzer(VADAnalyzer):
                 f"Silero VAD sample rate needs to be 16000 or 8000 (sample rate: {sample_rate})"
             )
 
+        previous_sample_rate = self.sample_rate
         super().set_sample_rate(sample_rate)
+        if self.sample_rate != previous_sample_rate:
+            self._samples_since_reset = 0
 
     def num_frames_required(self) -> int:
         """Get the number of audio frames required for VAD analysis.
@@ -211,13 +213,13 @@ class SileroVADAnalyzer(VADAnalyzer):
             audio_float32 = audio_int16.astype(np.float32) / 32768.0
             new_confidence = self._model(audio_float32, self.sample_rate)[0]
 
-            # We need to reset the model from time to time because it doesn't
-            # really need all the data and memory will keep growing otherwise.
-            curr_time = time.time()
-            diff_time = curr_time - self._last_reset_time
-            if diff_time >= _MODEL_RESET_STATES_TIME:
+            # Reset after the frame crossing each audio-time deadline. Carry the
+            # remainder so frame quantization does not accumulate timing drift.
+            self._samples_since_reset += len(audio_int16)
+            reset_samples = round(_MODEL_RESET_STATES_TIME * self.sample_rate)
+            if self._samples_since_reset >= reset_samples:
                 self._model.reset_states()
-                self._last_reset_time = curr_time
+                self._samples_since_reset %= reset_samples
 
             return new_confidence
         except Exception as e:
